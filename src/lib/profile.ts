@@ -12,6 +12,7 @@ export type Profile = {
   shelf_names: { books?: string; current?: string; research?: string };
   is_admin: boolean;
   onboarded: boolean;
+  starter_seeded: boolean;
 };
 
 export async function requireProfile(opts: { allowUnonboarded?: boolean } = {}) {

@@ -9,6 +9,9 @@ export default async function ShelfPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
   const theme = THEMES.find((t) => t.slug === sp.theme)?.slug ?? THEMES[0].slug;
 
+  // First visit: copy the shared starter books and papers onto this person's own shelves.
+  if (!profile.starter_seeded) await supabase.rpc("seed_my_shelf");
+
   const { data: srcData } = await supabase
     .from("sources").select("*").eq("owner", profile.id).eq("theme", theme)
     .order("sort").order("created_at");
