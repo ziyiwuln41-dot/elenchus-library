@@ -12,7 +12,14 @@ export async function createScrapbook(title: string, theme: string, questionId?:
     .select("id")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not create");
-  await supabase.from("scrapbook_pages").insert({ scrapbook_id: data.id, title: "Page 1", position: 0 });
+  const pageId = crypto.randomUUID();
+  await supabase.from("scrapbook_pages").insert({ id: pageId, scrapbook_id: data.id, title: "Page 1", position: 0 });
+  if (questionId) {
+    // Start a question's scrapbook with the question written across the top of the page.
+    await supabase.from("board_items").insert({
+      page_id: pageId, kind: "heading", x: 80, y: 50, w: 1400, h: 140, rotation: 0, z: 1, color: "#2E3820", style: {}, text: title,
+    });
+  }
   return data.id as string;
 }
 
