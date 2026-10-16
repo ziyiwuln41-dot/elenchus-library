@@ -1,32 +1,46 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function Login() {
+  const router = useRouter();
+  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    params.get("error") === "link" ? "That sign-in link had already been used or expired. Send a new one, and use the code in it if the link misbehaves." : null,
+  );
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setState("sending");
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await createClient().auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
     });
     if (error) {
       setState("idle");
-      setError(
-        /database error|invite/i.test(error.message)
-          ? "This library is invite-only. Ask Ziyi to add your email first."
-          : error.message,
-      );
+      setError(/database error|invite/i.test(error.message) ? "This library is invite-only. Ask Ziyi to add your email first." : error.message);
       return;
     }
     setState("sent");
+  }
+
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setChecking(true);
+    const { error } = await createClient().auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "email" });
+    setChecking(false);
+    if (error) return setError("That code didn't work. Check it, or send a fresh email.");
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -42,9 +56,22 @@ export default function LoginPage() {
         </p>
 
         {state === "sent" ? (
-          <p style={{ fontSize: 18 }}>
-            A sign-in link is on its way to <strong>{email}</strong>. Open it on this device to enter your library.
-          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 18, margin: 0 }}>
+              An email is on its way to <strong>{email}</strong>. Tap its button, or type the code from it here:
+            </p>
+            <form onSubmit={verifyCode} style={{ display: "flex", gap: 8 }}>
+              <label htmlFor="otp" className="sr-only">Code from the email</label>
+              <input
+                id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                style={{ flex: 1, fontSize: 24, letterSpacing: ".3em", textAlign: "center" }}
+              />
+              <button className="btn btn-primary" disabled={checking || code.length < 6}>{checking ? "…" : "Enter"}</button>
+            </form>
+            {error && <p role="alert" style={{ margin: 0, color: "#7a2a1c" }}>{error}</p>}
+            <button className="btn btn-ghost" onClick={() => { setState("idle"); setCode(""); }}>Use a different email</button>
+          </div>
         ) : (
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div className="field">
@@ -53,11 +80,19 @@ export default function LoginPage() {
             </div>
             {error && <p role="alert" style={{ margin: 0, color: "#7a2a1c" }}>{error}</p>}
             <button className="btn btn-primary" disabled={state === "sending"}>
-              {state === "sending" ? "Sending…" : "Send me a sign-in link"}
+              {state === "sending" ? "Sending…" : "Send me a sign-in email"}
             </button>
           </form>
         )}
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <Login />
+    </Suspense>
   );
 }
