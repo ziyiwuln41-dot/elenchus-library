@@ -1,0 +1,36 @@
+.book {
+  position: relative; flex: none; border: none; padding: 10px 0;
+  border-radius: 4px 4px 2px 2px; transform-origin: bottom center; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  transition: transform .25s ease, box-shadow .25s ease;
+  background-image: linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.18) 6%, rgba(255,255,255,.22) 20%, rgba(255,255,255,.08) 34%, rgba(0,0,0,0) 50%, rgba(0,0,0,.12) 72%, rgba(0,0,0,.5) 94%, rgba(0,0,0,.7) 100%);
+  box-shadow: 3px 0 4px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.12);
+  text-decoration: none;
+}
+.book::before {
+  content: ""; position: absolute; left: 2px; right: -6px; top: -6px; height: 6px;
+  background: repeating-linear-gradient(90deg,#f2e8d2 0 1px,#d9ccb0 1px 2px);
+  transform: skewX(-45deg); transform-origin: bottom left; border-radius: 1px;
+}
+.book:hover, .book:focus-visible { transform: translateY(-14px) rotate(0deg) !important; box-shadow: 8px 10px 16px rgba(0,0,0,.55); outline: none; }
+.picked { transform: translateY(-18px) !important; outline: 2px solid #E9C877 !important; outline-offset: 2px; }
+
+.title { writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 72%; line-height: 1; letter-spacing: .02em; }
+.author { writing-mode: vertical-rl; font-size: 9px; opacity: .85; white-space: nowrap; font-family: 'EB Garamond', serif; letter-spacing: .06em; max-height: 22%; overflow: hidden; }
+.band { width: 78%; height: 7px; border-top: 1.5px solid rgba(233,200,119,.85); border-bottom: 1.5px solid rgba(233,200,119,.85); }
+
+.modern .band, .mag .band { display: none; }
+.journal { border-radius: 2px; }
+.journal .band { height: 26px; border: 1px solid rgba(233,200,119,.7); background: rgba(0,0,0,.18); width: 70%; }
+.mag { border-radius: 1px; padding: 6px 0; }
+.mag::before { right: -3px; top: -3px; height: 3px; }
+
+.wrap { position: relative; flex: none; display: flex; }
+.notesTab {
+  position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
+  width: 26px; height: 22px; border-radius: 4px 4px 0 0; border: none; cursor: pointer;
+  background: #E9C877; color: #2A1E10; font-size: 11px; font-family: 'Cinzel', serif;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 -2px 4px rgba(0,0,0,.3); z-index: 2;
+}
+.notesTab:hover, .notesTab:focus-visible { background: #f3d98f; outline: 2px solid #fff3c4; }
