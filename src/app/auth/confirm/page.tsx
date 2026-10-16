@@ -26,7 +26,7 @@ export default async function ConfirmPage({ searchParams }: PageProps<"/auth/con
           <div style={{ marginTop: 14 }}>
             <h1 className="display" style={{ fontSize: 36, margin: "0 0 10px" }}>This link can&apos;t sign you in</h1>
             <HashNotice />
-            <p>Send a new sign-in email from the login page and type the 6-digit code from it.</p>
+            <p>Send a new sign-in email from the login page and type the code from it.</p>
             <a className="btn btn-primary" href="/login" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Back to sign-in</a>
           </div>
         )}

@@ -14,7 +14,7 @@ export default function HashNotice() {
   return (
     <p role="alert" style={{ margin: "12px 0 0", color: "#7a2a1c" }}>
       This link was already used, probably by your email provider&apos;s security scanner, which opens links before you do.
-      Go back, send a new email, and type the 6-digit code from it instead of tapping the link.
+      Go back, send a new email, and type the code from it instead of tapping the link.
     </p>
   );
 }

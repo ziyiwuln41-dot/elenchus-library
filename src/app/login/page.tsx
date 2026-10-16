@@ -63,7 +63,7 @@ function Login() {
             <form onSubmit={verifyCode} style={{ display: "flex", gap: 8 }}>
               <label htmlFor="otp" className="sr-only">Code from the email</label>
               <input
-                id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
+                id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" placeholder="12345678"
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 style={{ flex: 1, fontSize: 24, letterSpacing: ".3em", textAlign: "center" }}
               />
