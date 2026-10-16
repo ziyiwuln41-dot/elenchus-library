@@ -16,9 +16,9 @@ const CLIPS = ["polka", "enamel", "chrome", "stripe"] as const;
 const TEXT_KINDS: ItemKind[] = ["card", "sticky", "heading"];
 
 export default function Board({
-  page, initialItems, sources, canEdit, userId,
+  page, initialItems, sources, canEdit, userId, userName,
 }: {
-  page: PageInfo; initialItems: BoardItem[]; sources: SourceRef[]; canEdit: boolean; userId: string;
+  page: PageInfo; initialItems: BoardItem[]; sources: SourceRef[]; canEdit: boolean; userId: string; userName: string;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<BoardItem[]>(initialItems);
@@ -31,6 +31,20 @@ export default function Board({
   const scroller = useRef<HTMLDivElement>(null);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const draggingId = useRef<string | null>(null);
+  const chan = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastSend = useRef<Record<string, number>>({});
+  const [peers, setPeers] = useState<Record<string, { name: string; color: string }>>({});
+  const [cursors, setCursors] = useState<Record<string, { x: number; y: number; t: number }>>({});
+  const [locks, setLocks] = useState<Record<string, { uid: string; name: string }>>({});
+  const myColor = colorFor(userId);
+
+  // Send a realtime message, at most once per `gap` ms for each kind of message.
+  const send = useCallback((event: string, payload: Record<string, unknown>, gap = 40, key = event) => {
+    const now = Date.now();
+    if (gap && now - (lastSend.current[key] ?? 0) < gap) return;
+    lastSend.current[key] = now;
+    chan.current?.send({ type: "broadcast", event, payload: { ...payload, uid: userId } });
+  }, [userId]);
 
   const selected = items.find((i) => i.id === sel) ?? null;
   const patch = useCallback((id: string, p: Partial<BoardItem>) => setItems((arr) => arr.map((i) => (i.id === id ? { ...i, ...p } : i))), []);
@@ -49,28 +63,57 @@ export default function Board({
     [save],
   );
 
-  // Live updates from anyone else editing this page.
+  // Live collaboration: database changes, plus presence, cursors, live drags, live typing and note locks.
   useEffect(() => {
-    const ch = supabase
-      .channel(`items-${page.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "board_items", filter: `page_id=eq.${page.id}` }, (msg) => {
-        if (msg.eventType === "DELETE") {
-          const old = msg.old as { id: string };
-          setItems((arr) => arr.filter((i) => i.id !== old.id));
-          return;
-        }
-        const row = msg.new as BoardItem;
-        if (row.updated_by === userId) return; // our own echo
-        if (draggingId.current === row.id) return;
-        setItems((arr) => (arr.some((i) => i.id === row.id) ? arr.map((i) => (i.id === row.id ? row : i)) : [...arr, row]));
-      })
+    const ch = supabase.channel(`board-${page.id}`, { config: { presence: { key: userId }, broadcast: { self: false } } });
+    chan.current = ch;
+    ch.on("postgres_changes", { event: "*", schema: "public", table: "board_items", filter: `page_id=eq.${page.id}` }, (msg) => {
+      if (msg.eventType === "DELETE") {
+        const old = msg.old as { id: string };
+        setItems((arr) => arr.filter((i) => i.id !== old.id));
+        return;
+      }
+      const row = msg.new as BoardItem;
+      if (row.updated_by === userId) return;
+      if (draggingId.current === row.id) return;
+      setItems((arr) => (arr.some((i) => i.id === row.id) ? arr.map((i) => (i.id === row.id ? { ...row } : i)) : [...arr, row]));
+    })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "scrapbook_pages", filter: `id=eq.${page.id}` }, (msg) => {
         const p = msg.new as PageInfo;
         setSize({ w: p.width, h: p.height });
       })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [supabase, page.id, userId]);
+      .on("broadcast", { event: "cursor" }, ({ payload }) => {
+        setCursors((c) => ({ ...c, [payload.uid]: { x: payload.x, y: payload.y, t: Date.now() } }));
+      })
+      .on("broadcast", { event: "move" }, ({ payload }) => {
+        if (draggingId.current === payload.id) return;
+        setItems((arr) => arr.map((i) => (i.id === payload.id ? { ...i, x: payload.x, y: payload.y, w: payload.w, h: payload.h, rotation: payload.rotation } : i)));
+      })
+      .on("broadcast", { event: "text" }, ({ payload }) => {
+        setItems((arr) => arr.map((i) => (i.id === payload.id ? { ...i, text: payload.text } : i)));
+      })
+      .on("broadcast", { event: "lock" }, ({ payload }) => {
+        setLocks((l) => {
+          const n = { ...l };
+          if (payload.on) n[payload.id] = { uid: payload.uid, name: payload.name };
+          else if (n[payload.id]?.uid === payload.uid) delete n[payload.id];
+          return n;
+        });
+      })
+      .on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState<{ name: string; color: string }>();
+        const next: Record<string, { name: string; color: string }> = {};
+        for (const [k, v] of Object.entries(state)) if (k !== userId && v[0]) next[k] = { name: v[0].name, color: v[0].color };
+        setPeers(next);
+        // Drop cursors and locks of anyone who left.
+        setCursors((c) => Object.fromEntries(Object.entries(c).filter(([k]) => next[k])));
+        setLocks((l) => Object.fromEntries(Object.entries(l).filter(([, v]) => next[v.uid])));
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ name: userName, color: colorFor(userId) });
+      });
+    return () => { chan.current = null; supabase.removeChannel(ch); };
+  }, [supabase, page.id, userId, userName]);
 
   function toBoard(e: { clientX: number; clientY: number }) {
     const el = scroller.current!.querySelector("[data-board]") as HTMLElement;
@@ -102,19 +145,24 @@ export default function Board({
   }
 
   function onMove(e: React.PointerEvent) {
+    if (Object.keys(peers).length) {
+      const c = toBoard(e);
+      send("cursor", { x: Math.round(c.x), y: Math.round(c.y) }, 60);
+    }
     const d = drag.current;
     if (!d) return;
     const p = toBoard(e);
     const it = items.find((i) => i.id === d.id);
     if (!it) return;
-    if (d.mode === "move") patch(d.id, { x: Math.max(0, p.x - d.dx), y: Math.max(0, p.y - d.dy) });
-    else if (d.mode === "rotate") {
-      const deg = (Math.atan2(p.y - d.cy, p.x - d.cx) * 180) / Math.PI + 90;
-      patch(d.id, { rotation: Math.round(deg) });
-    } else {
+    let next = { x: it.x, y: it.y, w: it.w, h: it.h, rotation: it.rotation };
+    if (d.mode === "move") next = { ...next, x: Math.max(0, p.x - d.dx), y: Math.max(0, p.y - d.dy) };
+    else if (d.mode === "rotate") next = { ...next, rotation: Math.round((Math.atan2(p.y - d.cy, p.x - d.cx) * 180) / Math.PI + 90) };
+    else {
       const m = MIN[it.kind];
-      patch(d.id, { w: Math.max(m.w, d.sw + (p.x - d.sx)), h: Math.max(m.h, d.sh + (p.y - d.sy)) });
+      next = { ...next, w: Math.max(m.w, d.sw + (p.x - d.sx)), h: Math.max(m.h, d.sh + (p.y - d.sy)) };
     }
+    patch(d.id, next);
+    send("move", { id: d.id, ...next });
   }
   async function onUp() {
     const d = drag.current;
@@ -123,6 +171,7 @@ export default function Board({
     if (!d) return;
     const it = items.find((i) => i.id === d.id);
     if (!it) return;
+    send("move", { id: it.id, x: it.x, y: it.y, w: it.w, h: it.h, rotation: it.rotation }, 0, `drop-${it.id}`);
     await save(it.id, { x: it.x, y: it.y, w: it.w, h: it.h, rotation: it.rotation });
     // Let the page grow when things reach its edge.
     const right = it.x + (it.w ?? 0), bottom = it.y + (it.h ?? 0);
@@ -200,12 +249,21 @@ export default function Board({
           <button style={trayBtn} onClick={() => add("tape", { style: { pattern: TAPE_PATTERNS[Math.floor(Math.random() * 5)] }, color: DECOR_COLORS[Math.floor(Math.random() * 8)] })} title="Washi tape"><span style={{ width: 34, height: 12, ...tapeStyle("hearts", "#e53935") }} />Tape</button>
           <button style={trayBtn} onClick={() => add("pin", { color: ["#E9C877", "#ff8fab", "#9ec5e8", "#c0c7cf"][Math.floor(Math.random() * 4)] })} title="Star pin"><span style={{ width: 20, height: 20 }}><StarPin color="#E9C877" /></span>Star</button>
           <span style={{ flex: 1 }} />
+          <PresenceDots me={{ name: userName, color: myColor }} peers={peers} />
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
             Zoom
             <select className="input" style={{ minHeight: 36, padding: "4px 8px" }} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
               <option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option>
             </select>
           </label>
+        </div>
+      )}
+
+      {!canEdit && (
+        <div className="card" style={{ padding: "8px 12px", display: "flex", gap: 10, alignItems: "center" }}>
+          <span>You can view this scrapbook. Changes appear as others make them.</span>
+          <span style={{ flex: 1 }} />
+          <PresenceDots me={{ name: userName, color: myColor }} peers={peers} />
         </div>
       )}
 
@@ -271,9 +329,17 @@ export default function Board({
                 onDown={(e) => startMove(e, it)}
                 onRotate={(e) => startRotate(e, it)}
                 onResize={(e) => startResize(e, it)}
-                onText={(text) => { patch(it.id, { text }); saveSoon(it.id, { text }); }}
-                onFocus={() => setSel(it.id)}
+                onText={(text) => { patch(it.id, { text }); saveSoon(it.id, { text }); send("text", { id: it.id, text }, 0); }}
+                onFocus={() => { setSel(it.id); send("lock", { id: it.id, on: true, name: userName }, 0); }}
+                onBlur={() => send("lock", { id: it.id, on: false }, 0)}
+                lockedBy={locks[it.id] && locks[it.id].uid !== userId ? locks[it.id].name : null}
               />
+            ))}
+            {Object.entries(cursors).map(([uid, c]) => peers[uid] && (
+              <div key={uid} aria-hidden="true" style={{ position: "absolute", left: c.x, top: c.y, zIndex: 100000, pointerEvents: "none", transition: "left .08s linear, top .08s linear" }}>
+                <svg width="22" height="22" viewBox="0 0 22 22"><path d="M2 2 L18 9 L10 11 L8 19 Z" fill={peers[uid].color} stroke="#fff" strokeWidth="1.5" /></svg>
+                <span style={{ position: "absolute", left: 18, top: 16, background: peers[uid].color, color: "#fff", fontSize: 14, padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>{peers[uid].name}</span>
+              </div>
             ))}
             {items.length === 0 && (
               <div style={{ position: "absolute", left: 80, top: 80, fontFamily: "var(--hand)", fontSize: 34, color: "rgba(90,58,34,.55)" }}>
@@ -313,11 +379,11 @@ export default function Board({
 }
 
 function ItemView({
-  it, selected, canEdit, linked, onDown, onRotate, onResize, onText, onFocus,
+  it, selected, canEdit, linked, onDown, onRotate, onResize, onText, onFocus, onBlur, lockedBy,
 }: {
   it: BoardItem; selected: boolean; canEdit: boolean; linked: SourceRef | null;
   onDown: (e: React.PointerEvent) => void; onRotate: (e: React.PointerEvent) => void; onResize: (e: React.PointerEvent) => void;
-  onText: (t: string) => void; onFocus: () => void;
+  onText: (t: string) => void; onFocus: () => void; onBlur: () => void; lockedBy: string | null;
 }) {
   const base: React.CSSProperties = {
     position: "absolute", left: it.x, top: it.y, width: it.w ?? undefined, height: it.h ?? undefined,
@@ -330,9 +396,10 @@ function ItemView({
     <textarea
       aria-label="Note text"
       value={it.text ?? ""}
-      readOnly={!canEdit}
+      readOnly={!canEdit || !!lockedBy}
       onChange={(e) => onText(e.target.value)}
       onFocus={onFocus}
+      onBlur={onBlur}
       onPointerDown={(e) => e.stopPropagation()}
       placeholder={canEdit ? "Write here…" : ""}
       style={{
@@ -375,6 +442,11 @@ function ItemView({
         <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: 0, height: 24, cursor: "grab", zIndex: 1 }} />
       )}
       {body}
+      {lockedBy && (
+        <span style={{ position: "absolute", right: 8, top: -14, zIndex: 3, background: "#3F4A2A", color: "#F3EBDD", fontSize: 13, padding: "2px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+          {lockedBy} is typing…
+        </span>
+      )}
       {linked && (
         <Link
           href={`/?theme=${linked.theme}&open=${linked.id}`}
@@ -391,5 +463,26 @@ function ItemView({
         </>
       )}
     </div>
+  );
+}
+
+function colorFor(id: string) {
+  const colors = ["#c2185b", "#1f78c1", "#2bb3a3", "#fb8c00", "#7b4bb7", "#3F5A35", "#B5612F", "#6B2A2A"];
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return colors[h % colors.length];
+}
+
+function PresenceDots({ me, peers }: { me: { name: string; color: string }; peers: Record<string, { name: string; color: string }> }) {
+  const all = [me, ...Object.values(peers)];
+  return (
+    <span aria-label={`On this page: ${all.map((p) => p.name).join(", ")}`} style={{ display: "flex", alignItems: "center" }}>
+      {all.map((p, i) => (
+        <span key={i} title={i === 0 ? `${p.name} (you)` : p.name}
+          style={{ width: 32, height: 32, borderRadius: "50%", background: p.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, border: "2px solid #FBF7EE", marginLeft: i ? -8 : 0 }}>
+          {p.name.slice(0, 1).toUpperCase()}
+        </span>
+      ))}
+    </span>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Board from "@/components/board/Board";
 import ScrapbookHeader from "@/components/board/ScrapbookHeader";
+import ShareButton, { type Member } from "@/components/board/ShareButton";
 import { requireProfile } from "@/lib/profile";
 import type { BoardItem, PageInfo, SourceRef } from "@/components/board/types";
 
@@ -29,6 +30,11 @@ export default async function ScrapbookPage({ params, searchParams }: PageProps<
   const { data: items } = await supabase.from("board_items").select("*").eq("page_id", current.id);
   const { data: mine } = await supabase.from("sources").select("id, title, theme, author").eq("owner", profile.id).order("title");
 
+  const peopleIds = [book.owner, ...(members ?? []).map((m) => m.user_id)];
+  const { data: people } = await supabase.from("profiles").select("id, display_name").in("id", peopleIds);
+  const nameOf = (uid: string) => people?.find((p) => p.id === uid)?.display_name || "Member";
+  const memberList: Member[] = (members ?? []).map((m) => ({ user_id: m.user_id, role: m.role as Member["role"], name: nameOf(m.user_id) }));
+
   // Linked sources from collaborators' shelves are readable through the board-member policy.
   const linkedIds = [...new Set((items ?? []).map((i) => i.link_source_id).filter(Boolean))] as string[];
   const mineIds = new Set((mine ?? []).map((s) => s.id));
@@ -49,7 +55,7 @@ export default async function ScrapbookPage({ params, searchParams }: PageProps<
         currentPage={current.id}
         isOwner={isOwner}
         canEdit={canEdit}
-        sharedWith={null}
+        sharedWith={<ShareButton scrapbookId={book.id} isOwner={isOwner} members={memberList} ownerName={nameOf(book.owner)} me={profile.id} />}
       />
       <Board
         key={current.id}
@@ -58,6 +64,7 @@ export default async function ScrapbookPage({ params, searchParams }: PageProps<
         sources={[...((mine ?? []) as SourceRef[]), ...others]}
         canEdit={canEdit}
         userId={profile.id}
+        userName={profile.display_name || "Me"}
       />
     </div>
   );
