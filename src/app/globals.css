@@ -59,3 +59,6 @@ button { font: inherit; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+dialog::backdrop { background: rgba(40, 28, 14, .45); backdrop-filter: blur(2px); }
+select.input { appearance: auto; }

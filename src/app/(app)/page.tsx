@@ -1,28 +1,44 @@
 import ThemeChips from "@/components/ThemeChips";
-import ShelfRow from "@/components/ShelfRow";
+import ShelfView from "@/components/shelf/ShelfView";
 import { requireProfile, shelfName } from "@/lib/profile";
-import { THEMES } from "@/lib/style";
+import { THEMES, paletteColors } from "@/lib/style";
+import type { AnalysisLine, Excerpt, Source } from "@/lib/sources";
 
 export default async function ShelfPage({ searchParams }: PageProps<"/">) {
-  const { profile } = await requireProfile();
+  const { supabase, profile } = await requireProfile();
   const sp = await searchParams;
   const theme = THEMES.find((t) => t.slug === sp.theme)?.slug ?? THEMES[0].slug;
+
+  const { data: srcData } = await supabase
+    .from("sources").select("*").eq("owner", profile.id).eq("theme", theme)
+    .order("sort").order("created_at");
+  const sources = (srcData ?? []) as Source[];
+  const ids = sources.map((s) => s.id);
+
+  let excerpts: Excerpt[] = [];
+  let lines: AnalysisLine[] = [];
+  if (ids.length) {
+    const { data: ex } = await supabase.from("excerpts").select("*").in("source_id", ids).order("created_at");
+    excerpts = (ex ?? []) as Excerpt[];
+    const exIds = excerpts.map((e) => e.id);
+    if (exIds.length) {
+      const { data: ln } = await supabase.from("analysis_lines").select("*").in("excerpt_id", exIds).order("created_at");
+      lines = (ln ?? []) as AnalysisLine[];
+    }
+  }
 
   return (
     <div>
       <ThemeChips current={theme} basePath="/" />
-      <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
-        {(["books", "current", "research"] as const).map((k) => (
-          <section key={k}>
-            <h2 className="display" style={{ fontSize: 32, margin: "0 0 10px" }}>{shelfName(profile, k)}</h2>
-            <ShelfRow wood={profile.wood}>
-              <div style={{ alignSelf: "center", color: "rgba(233,200,119,.85)", fontStyle: "italic", paddingBottom: 30 }}>
-                Your sources arrive here in the next build phase.
-              </div>
-            </ShelfRow>
-          </section>
-        ))}
-      </div>
+      <ShelfView
+        theme={theme}
+        sources={sources}
+        excerpts={excerpts}
+        lines={lines}
+        wood={profile.wood}
+        colors={paletteColors(profile.palette, profile.palette_custom)}
+        shelfNames={{ books: shelfName(profile, "books"), current: shelfName(profile, "current"), research: shelfName(profile, "research") }}
+      />
     </div>
   );
 }
