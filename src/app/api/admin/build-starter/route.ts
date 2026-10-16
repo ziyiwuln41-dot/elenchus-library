@@ -77,9 +77,10 @@ export async function GET(request: NextRequest) {
   if (!spec) return NextResponse.json({ error: "unknown theme" }, { status: 400 });
   const perTopic = Number(sp.get("perTopic") ?? 3);
 
+  const skipShelves = sp.get("only") === "current";
   const [books, papers, newsLists] = await Promise.all([
-    resolve(spec.books, "book"),
-    resolve(spec.papers, "paper", spec.requireInTitle),
+    skipShelves ? Promise.resolve({ found: [] as Hit[], missed: [] as string[] }) : resolve(spec.books, "book"),
+    skipShelves ? Promise.resolve({ found: [] as Hit[], missed: [] as string[] }) : resolve(spec.papers, "paper", spec.requireInTitle),
     sp.get("news") === "1" ? pool(spec.news, 1, (t) => newsFor(t, perTopic, spec.requireInTitle).catch(() => [] as Hit[])) : Promise.resolve([] as Hit[][]),
   ]);
   const seen = new Set<string>();
@@ -95,11 +96,13 @@ export async function GET(request: NextRequest) {
     ...papers.found.map((h, i) => ({ shelf: "research", kind: "paper", ...pickFields(h), sort: i })),
   ]);
 
+  const only = sp.get("only");
+  const toWrite = only ? items.filter((x) => x.shelf === only) : items;
   let written = 0;
   let writeError: string | null = null;
   if (sp.get("write") === "1") {
     const sb = createSb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
-    const { data, error } = await sb.rpc("put_starter", { secret: process.env.SEED_SECRET, p_theme: theme, items });
+    const { data, error } = await sb.rpc("put_starter", { secret: process.env.SEED_SECRET, p_theme: theme, items: toWrite });
     written = (data as number) ?? 0;
     writeError = error?.message ?? null;
   }

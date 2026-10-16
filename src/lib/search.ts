@@ -86,7 +86,7 @@ export async function searchNYT(q: string, n = 8): Promise<Hit[]> {
   return (j.response?.docs ?? []).slice(0, n).map((d: { headline?: { main?: string }; web_url: string; pub_date?: string; byline?: { original?: string }; abstract?: string }) => ({
     type: "article" as const,
     title: d.headline?.main ?? "Untitled",
-    author: d.byline?.original?.replace(/^By\s+/i, "") ?? null,
+    author: shortByline(d.byline?.original?.replace(/^By\s+/i, "") ?? null),
     year: d.pub_date?.slice(0, 4) ?? null,
     publication: "The New York Times",
     url: d.web_url,
@@ -154,4 +154,10 @@ export async function search(type: string, q: string, n = 8): Promise<Hit[]> {
   if (type === "books") return searchBooks(q, n);
   if (type === "news") return searchNews(q, n);
   return [];
+}
+
+function shortByline(b: string | null) {
+  if (!b) return null;
+  const names = b.split(/,\s*|\s+and\s+/);
+  return names.length > 3 ? `${names.slice(0, 3).join(", ")} et al.` : b;
 }
