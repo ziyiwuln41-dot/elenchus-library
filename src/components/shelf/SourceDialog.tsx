@@ -74,7 +74,7 @@ export default function SourceDialog({
     const supabase = createClient();
     const res = editing
       ? await supabase.from("sources").update(row).eq("id", editing.id).select("id").single()
-      : await supabase.from("sources").insert({ ...row, sort: Date.now() % 2147483647 }).select("id").single();
+      : await supabase.from("sources").insert({ ...row, sort: 1000000 }).select("id").single();
     setSaving(false);
     if (res.error) return setErr(res.error.message);
     onSaved(res.data.id as string);

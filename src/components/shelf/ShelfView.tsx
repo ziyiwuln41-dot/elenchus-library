@@ -6,6 +6,7 @@ import Spine from "@/components/Spine";
 import ShelfRow from "@/components/ShelfRow";
 import SourceCard from "./SourceCard";
 import SourceDialog from "./SourceDialog";
+import SearchPanel from "./SearchPanel";
 import { spineLook, type AnalysisLine, type Excerpt, type ShelfKey, type Source } from "@/lib/sources";
 import type { SpineColor, WoodKey } from "@/lib/style";
 
@@ -17,6 +18,8 @@ export default function ShelfView({
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<string | null>(null);
+  const [search, setSearch] = useState<{ open: boolean; q: string; key: number }>({ open: false, q: "", key: 0 });
+  const [bar, setBar] = useState("");
   const [dlg, setDlg] = useState<{ open: boolean; shelf: ShelfKey; editing: Source | null; key: number }>({ open: false, shelf: "books", editing: null, key: 0 });
 
   const selected = sources.find((s) => s.id === picked) ?? null;
@@ -25,6 +28,14 @@ export default function ShelfView({
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 32, alignItems: "flex-start" }}>
       <div style={{ flex: "999 1 760px", minWidth: 0, display: "flex", flexDirection: "column", gap: 44 }}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); setPicked(null); setSearch((x) => ({ open: true, q: bar, key: x.key + 1 })); }}
+          style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: -12 }}
+        >
+          <label htmlFor="shelf-search" className="sr-only">Search books, papers and articles</label>
+          <input id="shelf-search" className="input" style={{ flex: "1 1 320px", maxWidth: 560 }} value={bar} onChange={(e) => setBar(e.target.value)} placeholder="Search books, papers and articles to add…" />
+          <button className="btn btn-primary" style={{ fontFamily: "var(--caps)", fontSize: 13, letterSpacing: ".2em" }}>SEARCH</button>
+        </form>
         {(["books", "current", "research"] as ShelfKey[]).map((key) => {
           const row = sources.filter((s) => s.shelf === key);
           return (
@@ -48,7 +59,7 @@ export default function ShelfView({
                       {...look}
                       picked={picked === s.id}
                       href={linkOut}
-                      onOpen={() => setPicked(s.id)}
+                      onOpen={() => { setSearch((x) => ({ ...x, open: false })); setPicked(s.id); }}
                     />
                   );
                 })}
@@ -71,7 +82,9 @@ export default function ShelfView({
       </div>
 
       <div style={{ flex: "1 1 320px", minWidth: 0, position: "sticky", top: 16 }}>
-        {selected ? (
+        {search.open ? (
+          <SearchPanel key={search.key} theme={theme} initialQuery={search.q} onAdded={() => router.refresh()} onClose={() => setSearch((x) => ({ ...x, open: false }))} />
+        ) : selected ? (
           <SourceCard
             key={selected.id}
             source={selected}
