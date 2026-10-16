@@ -40,6 +40,7 @@ export default async function ShelfPage({ searchParams }: PageProps<"/">) {
         lines={lines}
         wood={profile.wood}
         colors={paletteColors(profile.palette, profile.palette_custom)}
+        initialPicked={typeof sp.open === "string" ? sp.open : null}
         shelfNames={{ books: shelfName(profile, "books"), current: shelfName(profile, "current"), research: shelfName(profile, "research") }}
       />
     </div>

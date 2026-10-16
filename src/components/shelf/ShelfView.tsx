@@ -11,13 +11,13 @@ import { spineLook, type AnalysisLine, type Excerpt, type ShelfKey, type Source 
 import type { SpineColor, WoodKey } from "@/lib/style";
 
 export default function ShelfView({
-  theme, sources, excerpts, lines, wood, colors, shelfNames,
+  theme, sources, excerpts, lines, wood, colors, shelfNames, initialPicked = null,
 }: {
   theme: string; sources: Source[]; excerpts: Excerpt[]; lines: AnalysisLine[];
-  wood: WoodKey; colors: SpineColor[]; shelfNames: Record<ShelfKey, string>;
+  wood: WoodKey; colors: SpineColor[]; shelfNames: Record<ShelfKey, string>; initialPicked?: string | null;
 }) {
   const router = useRouter();
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(initialPicked);
   const [search, setSearch] = useState<{ open: boolean; q: string; key: number }>({ open: false, q: "", key: 0 });
   const [bar, setBar] = useState("");
   const [dlg, setDlg] = useState<{ open: boolean; shelf: ShelfKey; editing: Source | null; key: number }>({ open: false, shelf: "books", editing: null, key: 0 });
