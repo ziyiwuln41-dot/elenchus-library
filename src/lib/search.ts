@@ -57,9 +57,9 @@ export async function searchBooks(q: string, n = 8): Promise<Hit[]> {
   }));
 }
 
-export async function searchGuardian(q: string, n = 8): Promise<Hit[]> {
+export async function searchGuardian(q: string, n = 8, fromDate?: string): Promise<Hit[]> {
   const key = process.env.GUARDIAN_API_KEY || "test";
-  const url = `https://content.guardianapis.com/search?q=${encodeURIComponent(q)}&page-size=${n}&order-by=relevance&show-fields=byline,trailText&api-key=${key}`;
+  const url = `https://content.guardianapis.com/search?q=${encodeURIComponent(q)}&page-size=${n}&order-by=relevance&type=article&show-fields=byline,trailText${fromDate ? `&from-date=${fromDate}` : ""}&api-key=${key}`;
   const r = await fetch(url, { next: { revalidate: 1800 } });
   if (!r.ok) return [];
   const j = await r.json();

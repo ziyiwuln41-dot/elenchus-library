@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSb } from "@supabase/supabase-js";
 import { STARTER } from "@/data/starter";
-import { searchBooks, searchGdelt, searchPapers, type Hit } from "@/lib/search";
+import { searchBooks, searchGuardian, searchPapers, type Hit } from "@/lib/search";
 
 export const maxDuration = 300;
 
@@ -63,7 +63,8 @@ async function resolve(list: string[], kind: "book" | "paper", requireInTitle?: 
 }
 
 async function newsFor(topic: string, n: number, requireInTitle?: string): Promise<Hit[]> {
-  const hits = await searchGdelt(topic, n * 3);
+  const hits = await searchGuardian(topic, n * 3, "2022-01-01");
+  await new Promise((r) => setTimeout(r, 1100)); // Guardian developer keys allow about one request a second
   const keep = requireInTitle ? hits.filter((h) => norm(h.title).includes(requireInTitle) || norm(h.url ?? "").includes(requireInTitle)) : hits;
   return keep.slice(0, n);
 }
