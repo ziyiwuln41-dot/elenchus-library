@@ -55,7 +55,8 @@ async function resolve(list: string[], kind: "book" | "paper", requireInTitle?: 
           ? norm(h.title).includes(requireInTitle!) && !found.some((f) => f.title === h.title)
           : titleMatches(title, h.title) && authorMatches(surname, h.author),
       );
-      if (pick) found[i] = pick;
+      if (pick && !found.some((f) => f && norm(f.title) === norm(pick.title))) found[i] = pick;
+      else if (pick) return;
       else missed.push(entry);
   });
   return { found: found.filter(Boolean), missed };
@@ -83,11 +84,15 @@ export async function GET(request: NextRequest) {
   const seen = new Set<string>();
   const news = newsLists.flat().filter((h) => (seen.has(h.url!) ? false : (seen.add(h.url!), true)));
 
-  const items = [
+  const dedupe = <T extends { shelf: string; title: string }>(arr: T[]) => {
+    const seen = new Set<string>();
+    return arr.filter((x) => { const k = x.shelf + norm(x.title); if (seen.has(k)) return false; seen.add(k); return true; });
+  };
+  const items = dedupe([
     ...books.found.map((h, i) => ({ shelf: "books", kind: "book", ...pickFields(h), sort: i })),
     ...news.map((h, i) => ({ shelf: "current", kind: "article", ...pickFields(h), sort: i })),
     ...papers.found.map((h, i) => ({ shelf: "research", kind: "paper", ...pickFields(h), sort: i })),
-  ];
+  ]);
 
   let written = 0;
   let writeError: string | null = null;

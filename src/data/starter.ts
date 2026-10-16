@@ -218,10 +218,11 @@ export const STARTER: Record<string, StarterTheme> = {
   },
   singapore: {
     books: [
-      "From Third World to First|Lee", "The Singapore Story|Lee", "Singapore, A Biography|Frost", "Can Singapore Survive?|Mahbubani",
+      "From Third World to First|Lee", "The Singapore Story: Memoirs of Lee Kuan Yew|Lee", "Can Singapore Survive?|Mahbubani",
       "The Great Convergence|Mahbubani", "Has China Won?|Mahbubani", "Lee Kuan Yew: The Grand Master's Insights on China, the United States, and the World|Allison",
-      "Hard Truths to Keep Singapore Going|", "Living with Myths in Singapore|Loh", "Singapore: A Modern History|Abshire",
-      "Seeing Like a State|Scott", "Small States in World Politics|Baldacchino",
+      "Living with Myths in Singapore|Loh", "Singapore's Foreign Policy: Coping with Vulnerability|Leifer",
+      "The Singapore Water Story|Tortajada", "Singapore: Wealth, Power and the Culture of Control|Trocki",
+      "The Lion City|Mahbubani", "Singapore: A Biography|Frost",
     ],
     papers: [
       "Singapore meritocracy", "Singapore public housing", "Singapore small state foreign policy", "Singapore water security",
