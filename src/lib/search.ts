@@ -96,12 +96,55 @@ export async function searchNYT(q: string, n = 8): Promise<Hit[]> {
   }));
 }
 
-export async function searchNews(q: string, n = 8): Promise<Hit[]> {
-  const [g, t] = await Promise.all([searchGuardian(q, n).catch(() => []), searchNYT(q, n).catch(() => [])]);
+// Respected outlets that GDELT (free, keyless news index) is restricted to.
+export const OUTLETS: Record<string, string> = {
+  "nytimes.com": "The New York Times", "economist.com": "The Economist", "theguardian.com": "The Guardian",
+  "ft.com": "Financial Times", "theatlantic.com": "The Atlantic", "bbc.com": "BBC News", "bbc.co.uk": "BBC News",
+  "reuters.com": "Reuters", "washingtonpost.com": "The Washington Post", "straitstimes.com": "The Straits Times",
+  "channelnewsasia.com": "CNA", "technologyreview.com": "MIT Technology Review", "wired.com": "Wired",
+  "foreignaffairs.com": "Foreign Affairs", "newyorker.com": "The New Yorker", "apnews.com": "AP News",
+  "scmp.com": "South China Morning Post", "nature.com": "Nature", "vox.com": "Vox",
+};
+
+export async function searchGdelt(q: string, n = 8, opts: { domains?: string[]; start?: string } = {}): Promise<Hit[]> {
+  const domains = opts.domains ?? Object.keys(OUTLETS);
+  const dq = `(${domains.map((d) => `domainis:${d}`).join(" OR ")})`;
+  const start = opts.start ?? "20220101000000";
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(`${q} ${dq} sourcelang:english`)}&mode=artlist&format=json&maxrecords=${Math.min(n * 4, 75)}&sort=hybridrel&startdatetime=${start}`;
+  const r = await fetch(url, { headers: UA, next: { revalidate: 3600 } });
+  if (!r.ok) return [];
+  const text = await r.text();
+  let j: { articles?: { url: string; title: string; seendate: string; domain: string }[] };
+  try { j = JSON.parse(text); } catch { return []; }
+  const seen = new Set<string>();
   const out: Hit[] = [];
-  for (let i = 0; i < Math.max(g.length, t.length); i++) {
-    if (t[i]) out.push(t[i]);
-    if (g[i]) out.push(g[i]);
+  for (const a of j.articles ?? []) {
+    const dom = a.domain.replace(/^www\./, "");
+    const pub = OUTLETS[dom];
+    const key = a.title.toLowerCase();
+    if (!pub || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      type: "article", title: a.title, author: null, year: a.seendate?.slice(0, 4) ?? null,
+      publication: pub, url: a.url, doi: null, isbn: null,
+    });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+export async function searchNews(q: string, n = 8): Promise<Hit[]> {
+  const [g, t, d] = await Promise.all([
+    process.env.GUARDIAN_API_KEY ? searchGuardian(q, n).catch(() => []) : Promise.resolve([] as Hit[]),
+    searchNYT(q, n).catch(() => []),
+    searchGdelt(q, n).catch(() => []),
+  ]);
+  const out: Hit[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < Math.max(g.length, t.length, d.length); i++) {
+    for (const h of [t[i], g[i], d[i]]) {
+      if (h && h.url && !seen.has(h.url)) { seen.add(h.url); out.push(h); }
+    }
   }
   return out.slice(0, n * 2);
 }

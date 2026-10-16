@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSb } from "@supabase/supabase-js";
 import { STARTER } from "@/data/starter";
-import { searchBooks, searchPapers, type Hit } from "@/lib/search";
+import { searchBooks, searchGdelt, searchPapers, type Hit } from "@/lib/search";
 
 export const maxDuration = 300;
 
@@ -9,11 +9,28 @@ const norm = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
 function titleMatches(want: string, got: string) {
+  const gn = norm(got);
+  if (/box set|boxed set|collection|summary of|study guide|workbook/.test(gn) || got.includes("/")) return false;
   const w = norm(want.split(":")[0]).split(" ").filter((x) => x.length > 2);
-  const g = new Set(norm(got).split(" "));
-  if (!w.length) return norm(got).includes(norm(want));
-  const hit = w.filter((x) => g.has(x)).length;
-  return hit / w.length >= 0.75;
+  const g = gn.split(" ");
+  if (!w.length) return gn.includes(norm(want));
+  const hit = w.filter((x) => g.includes(x)).length;
+  return hit / w.length >= 0.75 && g.length <= w.length * 3 + 6;
+}
+
+// Run tasks a few at a time, retrying once, so the free APIs don't rate-limit us.
+async function pool<T, R>(items: T[], size: number, fn: (x: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      try { out[i] = await fn(items[i], i); }
+      catch { await new Promise((r) => setTimeout(r, 800)); out[i] = await fn(items[i], i).catch(() => undefined as R); }
+    }
+  }
+  await Promise.all(Array.from({ length: size }, worker));
+  return out;
 }
 function authorMatches(surname: string, got: string | null) {
   if (!surname) return true;
@@ -24,12 +41,15 @@ function authorMatches(surname: string, got: string | null) {
 async function resolve(list: string[], kind: "book" | "paper", requireInTitle?: string) {
   const found: Hit[] = [];
   const missed: string[] = [];
-  await Promise.all(
-    list.map(async (entry, i) => {
+  await pool(list, 4, async (entry, i) => {
       const [title, surname = ""] = entry.split("|");
       const topicOnly = !!requireInTitle && kind === "paper";
       const q = kind === "book" ? `${title} ${surname}`.trim() : title;
-      const hits = await (kind === "book" ? searchBooks(q, 5) : searchPapers(q, topicOnly ? 8 : 3)).catch(() => [] as Hit[]);
+      let hits = await (kind === "book" ? searchBooks(q, 5) : searchPapers(q, topicOnly ? 8 : 3)).catch(() => [] as Hit[]);
+      if (!hits.length) {
+        await new Promise((r) => setTimeout(r, 1000));
+        hits = await (kind === "book" ? searchBooks(q, 5) : searchPapers(q, topicOnly ? 8 : 3)).catch(() => [] as Hit[]);
+      }
       const pick = hits.find((h) =>
         topicOnly
           ? norm(h.title).includes(requireInTitle!) && !found.some((f) => f.title === h.title)
@@ -37,25 +57,13 @@ async function resolve(list: string[], kind: "book" | "paper", requireInTitle?: 
       );
       if (pick) found[i] = pick;
       else missed.push(entry);
-    }),
-  );
+  });
   return { found: found.filter(Boolean), missed };
 }
 
-async function guardian(topic: string, n: number, requireInTitle?: string): Promise<Hit[]> {
-  const key = process.env.GUARDIAN_API_KEY || "test";
-  const q = requireInTitle ? topic : topic;
-  const url = `https://content.guardianapis.com/search?q=${encodeURIComponent(q)}&from-date=2022-01-01&page-size=${n * 3}&order-by=relevance&show-fields=byline&api-key=${key}`;
-  const r = await fetch(url);
-  if (!r.ok) return [];
-  const j = await r.json();
-  const all: Hit[] = (j.response?.results ?? [])
-    .filter((a: { type: string; sectionId: string }) => a.type === "article" && !["football", "sport", "film", "music"].includes(a.sectionId) || topic.includes("sport") || topic.includes("Olympics") || topic.includes("esports") || topic.includes("doping"))
-    .map((a: { webTitle: string; webUrl: string; webPublicationDate: string; fields?: { byline?: string } }) => ({
-      type: "article", title: a.webTitle, author: a.fields?.byline ?? null, year: a.webPublicationDate.slice(0, 4),
-      publication: "The Guardian", url: a.webUrl, doi: null, isbn: null,
-    }));
-  const keep = requireInTitle ? all.filter((h) => norm(h.title).includes(requireInTitle) || norm(h.url ?? "").includes(requireInTitle)) : all;
+async function newsFor(topic: string, n: number, requireInTitle?: string): Promise<Hit[]> {
+  const hits = await searchGdelt(topic, n * 3);
+  const keep = requireInTitle ? hits.filter((h) => norm(h.title).includes(requireInTitle) || norm(h.url ?? "").includes(requireInTitle)) : hits;
   return keep.slice(0, n);
 }
 
@@ -70,7 +78,7 @@ export async function GET(request: NextRequest) {
   const [books, papers, newsLists] = await Promise.all([
     resolve(spec.books, "book"),
     resolve(spec.papers, "paper", spec.requireInTitle),
-    Promise.all(spec.news.map((t) => guardian(t, perTopic, spec.requireInTitle).catch(() => [] as Hit[]))),
+    pool(spec.news, 2, (t) => newsFor(t, perTopic, spec.requireInTitle).catch(() => [] as Hit[])),
   ]);
   const seen = new Set<string>();
   const news = newsLists.flat().filter((h) => (seen.has(h.url!) ? false : (seen.add(h.url!), true)));
