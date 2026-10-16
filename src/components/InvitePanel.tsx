@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function InvitePanel() {
-  const [emails, setEmails] = useState<string[]>([]);
+export default function InvitePanel({ initial }: { initial: string[] }) {
+  const [emails, setEmails] = useState<string[]>(initial);
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -12,7 +12,6 @@ export default function InvitePanel() {
     const { data } = await createClient().from("invites").select("email").order("created_at");
     setEmails((data ?? []).map((r) => r.email as string));
   }
-  useEffect(() => { load(); }, []);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
