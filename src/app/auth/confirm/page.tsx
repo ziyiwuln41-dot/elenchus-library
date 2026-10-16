@@ -1,3 +1,4 @@
+import HashNotice from "./HashNotice";
 // Email links land here. Signing in needs a real tap on the button, so email
 // link-scanners (e.g. Microsoft Safe Links) that open links automatically can't use up the link.
 export default async function ConfirmPage({ searchParams }: PageProps<"/auth/confirm">) {
@@ -23,8 +24,9 @@ export default async function ConfirmPage({ searchParams }: PageProps<"/auth/con
           </form>
         ) : (
           <div style={{ marginTop: 14 }}>
-            <h1 className="display" style={{ fontSize: 36, margin: "0 0 10px" }}>This link is incomplete</h1>
-            <p>Request a new sign-in email, or use the 6-digit code from it.</p>
+            <h1 className="display" style={{ fontSize: 36, margin: "0 0 10px" }}>This link can&apos;t sign you in</h1>
+            <HashNotice />
+            <p>Send a new sign-in email from the login page and type the 6-digit code from it.</p>
             <a className="btn btn-primary" href="/login" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Back to sign-in</a>
           </div>
         )}
