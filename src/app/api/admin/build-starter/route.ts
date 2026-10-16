@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
   const [books, papers, newsLists] = await Promise.all([
     resolve(spec.books, "book"),
     resolve(spec.papers, "paper", spec.requireInTitle),
-    pool(spec.news, 2, (t) => newsFor(t, perTopic, spec.requireInTitle).catch(() => [] as Hit[])),
+    sp.get("news") === "1" ? pool(spec.news, 1, (t) => newsFor(t, perTopic, spec.requireInTitle).catch(() => [] as Hit[])) : Promise.resolve([] as Hit[][]),
   ]);
   const seen = new Set<string>();
   const news = newsLists.flat().filter((h) => (seen.has(h.url!) ? false : (seen.add(h.url!), true)));
